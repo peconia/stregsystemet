@@ -65,7 +65,7 @@ class Member(models.Model): # id automatisk...
     def make_payment(self, amount):
         """
         Should only be called by the Payment class.
-        
+
         >>> jokke = Member.objects.create(username="jokke", firstname="Joakim", lastname="Byg", email="treo@cs.aau.dk", year=2007)
         >>> jokke.balance
         0
@@ -74,10 +74,13 @@ class Member(models.Model): # id automatisk...
         100
         """
         self.balance = self.balance + amount
-    
-    def make_sale(self, price):
+
+    def make_sale(self, sale):
         """
-        Should only be called by the Sale class.
+        Execute the member portion of a sale
+
+        Should only be called immediately before the corresponding sale class is persisted
+
         >>> jokke = Member.objects.create(username="jokke", firstname="Joakim", lastname="Byg", email="treo@cs.aau.dk", year=2007, balance=100)
         >>> jokke.balance
         100
@@ -93,7 +96,15 @@ class Member(models.Model): # id automatisk...
         if self.has_stregforbud(buy=price):
             raise StregForbudError
         else:
-            self.balance = self.balance - price
+            self.balance = self.balance - sale.price
+
+    def retract_sale(self, price):
+        """
+        Retract a sale.
+
+        Should only be called immediately before the corresponding sale class is deleted
+        """
+        self.balance = self.balance + sale.price
 
 #    def clear_undo_count(self):
 #        from django.db import connection
@@ -254,22 +265,28 @@ class Sale(models.Model):
         return self.member.username + " " + self.product.name + " (" + money(self.price) + ") " + str(self.timestamp)
     def save(self, *args, **kwargs):
         if self.id:
-            return # update -- should not be allowed
+            # update -- should not be allowed
+            raise RuntimeError("Updates of sales are not allowed")
         else:
+            #@UGLY What is the use of this? It should probably be removed
             if not self.price:
                 self.price = self.product.price
+            #Carry out the member part of the transaction
             #TODO: Make atomic
-            self.member.make_sale(self.price)
+            self.member.make_sale(self)
+            #Persist the record
             super(Sale, self).save(*args, **kwargs)
             self.member.save()
+
     def delete(self, *args, **kwargs):
         if self.id:
+            #Retract the sale from the member
             #TODO: Make atomic
-            self.member.make_sale(-self.price)
+            self.member.retract_sale(self)
             super(Sale, self).delete(*args, **kwargs)
             self.member.save()
         else:
-            super(Payment, self).delete(*args, **kwargs)
+            raise RuntimeError("You can't delete a sale that hasn't happened")
 
 #XXX
 class News(models.Model):
