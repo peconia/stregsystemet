@@ -248,11 +248,14 @@ class Room(models.Model):
     def __unicode__(self):
         return self.name
 
-class Sale(models.Model):
+class SaleList(models.Model):
     member = models.ForeignKey(Member)
-    product = models.ForeignKey(Product)
     room = models.ForeignKey(Room, null=True)
     timestamp = models.DateTimeField(auto_now_add=True)
+
+class Sale(models.Model):
+    sale_list = models.ForeignKey(SaleList)
+    product = models.ForeignKey(Product)
     price = models.IntegerField()
 
     def price_display(self):
@@ -262,7 +265,8 @@ class Sale(models.Model):
     price_display.admin_order_field = 'price'
     
     def __unicode__(self):
-        return self.member.username + " " + self.product.name + " (" + money(self.price) + ") " + str(self.timestamp)
+        return self.sale_list.member.username + " " + self.product.name + " (" + money(self.price) + ") " + str(self.sale_list.timestamp)
+
     def save(self, *args, **kwargs):
         if self.id:
             # update -- should not be allowed
@@ -273,18 +277,18 @@ class Sale(models.Model):
                 self.price = self.product.price
             #Carry out the member part of the transaction
             #TODO: Make atomic
-            self.member.make_sale(self)
+            self.sale_list.member.make_sale(self)
             #Persist the record
             super(Sale, self).save(*args, **kwargs)
-            self.member.save()
+            self.sale_list.member.save()
 
     def delete(self, *args, **kwargs):
         if self.id:
             #Retract the sale from the member
             #TODO: Make atomic
-            self.member.retract_sale(self)
+            self.sale_list.member.retract_sale(self)
             super(Sale, self).delete(*args, **kwargs)
-            self.member.save()
+            self.sale_list.member.save()
         else:
             raise RuntimeError("You can't delete a sale that hasn't happened")
 
